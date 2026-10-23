@@ -11,11 +11,11 @@ from muscriptor.tokenizer.mt3 import (
 from muscriptor.transcription_model import TranscriptionModel
 
 # Baked into the image by cog (config.json sits next to it, so no HF access
-# and no gated-repo token is needed at runtime). The float16 copy written by
-# scripts/convert_weights_fp16.py is half the size of the float32 original,
-# and every cold start (billed on a private model) reads the whole file.
-WEIGHTS_FP16 = "weights/model.fp16.safetensors"
-WEIGHTS = WEIGHTS_FP16 if os.path.exists(WEIGHTS_FP16) else "weights/model.safetensors"
+# and no gated-repo token is needed at runtime). Written by
+# scripts/convert_weights_fp16.py before `cog push`: half the size of the
+# float32 original, which .dockerignore keeps out of the image, since every
+# cold start (billed on a private model) pulls the whole image.
+WEIGHTS = "weights/model.fp16.safetensors"
 
 
 class Predictor(BasePredictor):

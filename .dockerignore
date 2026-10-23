@@ -20,3 +20,12 @@ __pycache__
 test.ipynb
 Dockerfile
 .dockerignore
+
+# Cog (cog.yaml, predict.py) bakes the float16 weights into its image; run
+# scripts/convert_weights_fp16.py before `cog push`. *.safetensors above only
+# matches the repo root. The float32 original stays out: every cold start
+# pulls the whole image.
+weights/model.safetensors
+# cog runs pyenv inside the image (python 3.12); the 3.13 pin in
+# .python-version breaks its final pip freeze.
+.python-version
