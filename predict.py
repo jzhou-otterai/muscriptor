@@ -72,14 +72,16 @@ class Predictor(BasePredictor):
         if batch_size > 1 and prelude_forcing:
             raise ValueError("batch_size above 1 requires prelude_forcing=false")
         names = [n for n in instruments.split(",") if n.strip()]
-        out = Path("/tmp/transcription.mid")
-        out.write_bytes(
-            self.model.transcribe_to_midi(
-                str(audio),
-                instruments=resolve_instrument_names(names) or None,
-                batch_size=batch_size,
-                prelude_forcing=prelude_forcing,
-                detect_tempo="best-effort" if detect_tempo else False,
-            )
+        # Chord markers stay off: the image doesn't install librosa (the chord
+        # model's input feature), and the MIDI keeps to MuScriptor's own notes.
+        midi, _grid = self.model.transcribe_and_postprocess(
+            str(audio),
+            instruments=resolve_instrument_names(names) or None,
+            batch_size=batch_size,
+            prelude_forcing=prelude_forcing,
+            detect_tempo="best-effort" if detect_tempo else False,
+            recognize_chords=False,
         )
+        out = Path("/tmp/transcription.mid")
+        out.write_bytes(midi)
         return out
