@@ -31,6 +31,16 @@ class Predictor(BasePredictor):
     def predict(
         self,
         audio: Path = Input(description="Audio file to transcribe (wav, mp3, flac, …)"),
+        more_audio: list[Path] = Input(
+            default=None,
+            description=(
+                "More recordings to transcribe in the same call. They are decoded together "
+                "with `audio`: chunk k of every recording shares one batch, and each "
+                "recording keeps its own prelude forcing, so the result matches "
+                "transcribing them one at a time while the GPU works on all of them at "
+                "each step. Recordings of similar length batch best."
+            ),
+        ),
         instruments: str = Input(
             default="",
             description=(
@@ -49,9 +59,9 @@ class Predictor(BasePredictor):
             ge=1,
             le=16,
             description=(
-                "5-second chunks decoded at once. Above 1 requires prelude_forcing=false; "
-                "4 is several times faster on a GPU, at some cost to notes that cross chunk "
-                "boundaries."
+                "5-second chunks of one recording decoded at once. Above 1 requires "
+                "prelude_forcing=false, which changes the transcription; to batch without "
+                "that, send several recordings with more_audio instead."
             ),
         ),
         prelude_forcing: bool = Input(
@@ -68,20 +78,30 @@ class Predictor(BasePredictor):
                 "120 BPM when the fit fails). Off skips the beat tracker."
             ),
         ),
-    ) -> Path:
+    ) -> list[Path]:
+        """One MIDI per recording: `audio` first, then `more_audio` in order."""
         if batch_size > 1 and prelude_forcing:
             raise ValueError("batch_size above 1 requires prelude_forcing=false")
+        if batch_size > 1 and more_audio:
+            raise ValueError("batch_size batches one recording; with more_audio, recordings are batched together")
         names = [n for n in instruments.split(",") if n.strip()]
-        # Chord markers stay off: the image doesn't install librosa (the chord
-        # model's input feature), and the MIDI keeps to MuScriptor's own notes.
-        midi, _grid = self.model.transcribe_and_postprocess(
-            str(audio),
+        options = dict(
             instruments=resolve_instrument_names(names) or None,
-            batch_size=batch_size,
             prelude_forcing=prelude_forcing,
             detect_tempo="best-effort" if detect_tempo else False,
+            # Chord markers stay off: the image doesn't install librosa (the chord
+            # model's input feature), and the MIDI keeps to MuScriptor's own notes.
             recognize_chords=False,
         )
-        out = Path("/tmp/transcription.mid")
-        out.write_bytes(midi)
-        return out
+        if more_audio:
+            results = self.model.transcribe_many_and_postprocess(
+                [str(audio)] + [str(a) for a in more_audio], **options
+            )
+        else:
+            results = [self.model.transcribe_and_postprocess(str(audio), batch_size=batch_size, **options)]
+        outputs = []
+        for i, (midi, _grid) in enumerate(results):
+            out = Path(f"/tmp/transcription_{i}.mid")
+            out.write_bytes(midi)
+            outputs.append(out)
+        return outputs
